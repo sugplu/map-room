@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Map Room by Dominares</title>
+<meta name="description" content="Pick a state, county and city. Map Room pulls the live public map and plan databases for that place, shows them on one map, and tells you when they change.">
+<meta name="author" content="Dominares">
+<meta name="publisher" content="Dominares">
+<meta name="theme-color" content="#14213d">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/esri-leaflet/3.0.12/esri-leaflet.min.js"></script>
+<style>
+:root{--ink:#14213d;--paper:#f7f4ec;--card:#fff;--line:#d9d3c3;--mute:#5d6577;--blue:#1d4ed8;--gold:#b7791f;--red:#b42318;--green:#17603a;--hi:#fff3c4}
+@media (prefers-color-scheme:dark){:root{--ink:#eef1f8;--paper:#10151f;--card:#1a2130;--line:#2e3a50;--mute:#a3adc2;--blue:#8ab4ff;--gold:#f0c060;--red:#ff8a80;--green:#7ddba3;--hi:#4a3f12}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper)}
+header{padding:10px 16px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+header h1{font-size:20px;margin:0;letter-spacing:.2px}
+header small{color:var(--mute)}
+.app{display:grid;grid-template-columns:minmax(340px,460px) 1fr;height:calc(100% - 50px)}
+.side{overflow:auto;padding:12px 16px 40px;border-right:1px solid var(--line)}
+#map{height:100%;min-height:320px;background:#cfd8dc}
+@media (max-width:820px){.app{display:flex;flex-direction:column;height:auto}#map{order:-1;height:42vh;min-height:260px;position:sticky;top:0;z-index:500}.side{border:0;overflow:visible}}
+select,input,button,textarea{font:inherit;color:inherit}
+.pick{display:grid;gap:8px}
+.pick label{font-size:13px;color:var(--mute);display:grid;gap:3px}
+select,input[type=text],textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 12px;cursor:pointer;min-height:40px}
+button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+@media (prefers-color-scheme:dark){button.primary{color:#0b1220}}
+button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button:disabled{opacity:.5;cursor:default}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.chips button{padding:5px 10px;min-height:34px;border-radius:999px;font-size:14px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:14px 0 8px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.tabs button{font-size:14px;padding:6px 10px;min-height:36px}
+.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--red);color:#fff;font-size:12px;text-align:center;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}
+.card h3{margin:0 0 2px;font-size:16px;overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--mute);overflow-wrap:anywhere}
+.pill{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-right:6px}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.row button,.row a.btn{font-size:14px;padding:5px 10px;min-height:34px}
+a{color:var(--blue)}
+a.btn{border:1px solid var(--line);border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;background:var(--card)}
+.changed{border-color:var(--gold);box-shadow:inset 4px 0 0 var(--gold)}
+.note{font-size:14px;color:var(--mute);margin:8px 0}
+.err{color:var(--red)}
+.ok{color:var(--green)}
+.thumb{width:72px;height:72px;object-fit:cover;border-radius:8px;float:right;margin-left:8px;border:1px solid var(--line)}
+.explain{background:var(--hi);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:14px}
+table.attr{border-collapse:collapse;font-size:13px;max-width:280px}
+table.attr td{border-bottom:1px solid #ddd;padding:2px 6px;vertical-align:top;overflow-wrap:anywhere;color:#14213d}
+table.attr td.v[contenteditable]{background:#fffbe6;min-width:90px}
+table.attr td.mine{background:#ffe08a;font-weight:600}
+.leaflet-popup-content{max-height:300px;overflow:auto;color:#14213d}
+.leaflet-popup-content textarea{color:#14213d;background:#fff}
+.leaflet-popup-content button{color:#14213d;background:#fff}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:8px 14px;border-radius:10px;display:none;z-index:9999;max-width:90vw}
+footer{font-size:13px;color:var(--mute);margin-top:24px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Map Room</h1>
+  <small>Every public map and plan database for a place, on one page. Made by <a href="https://dominares.org">Dominares</a>.</small>
+</header>
+<div class="app">
+  <div class="side">
+    <div class="pick">
+      <label>State <select id="selState"></select></label>
+      <label>County <select id="selCounty" disabled><option value="">Pick a state first</option></select></label>
+      <label>City or town (optional) <select id="selCity" disabled><option value="">Whole county</option></select></label>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="tabs" id="tabs"></div>
+    <div id="panel"><p class="note">Pick a state and a county. Map Room then asks the public map services for everything they hold on that place, newest information each time you open it.</p></div>
+    <footer>Sources are public records services: ArcGIS Online, Socrata open data, the Library of Congress, and the US Census. Map Room does not copy them. It reads them live. Your pins, notes and changes stay in this browser until you save them to a file.</footer>
+  </div>
+  <div id="map"></div>
+</div>
+<div id="toast"></div>
+<script>
+'use strict';
+const TIGER='https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer';
+const AGOL='https://www.arcgis.com/sharing/rest';
+const STATES={"01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut","10":"Delaware","11":"District of Columbia","12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa","20":"Kansas","21":"Kentucky","22":"Louisiana","23":"Maine","24":"Maryland","25":"Massachusetts","26":"Michigan","27":"Minnesota","28":"Mississippi","29":"Missouri","30":"Montana","31":"Nebraska","32":"Nevada","33":"New Hampshire","34":"New Jersey","35":"New Mexico","36":"New York","37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma","41":"Oregon","42":"Pennsylvania","44":"Rhode Island","45":"South Carolina","46":"South Dakota","47":"Tennessee","48":"Texas","49":"Utah","50":"Vermont","51":"Virginia","53":"Washington","54":"West Virginia","55":"Wisconsin","56":"Wyoming","72":"Puerto Rico"};
+const TOPICS=[
+ ['all','Everything',''],
+ ['parcels','Parcels and lots','parcel OR parcels OR assessor OR cadastral OR "tax lot" OR "tax lots"'],
+ ['plans','Plans and tract maps','blueprint OR blueprints OR "as-built" OR "as built" OR "site plan" OR "record drawings" OR "improvement plans" OR "tract map" OR subdivision OR subdivisions OR plat OR plats'],
+ ['zoning','Zoning and land use','zoning OR "land use" OR "general plan"'],
+ ['permits','Permits','permit OR permits'],
+ ['streets','Streets','street OR streets OR road OR roads OR centerline'],
+ ['utilities','Water, sewer, storm','water OR sewer OR storm OR utility OR utilities'],
+ ['flood','Flood','flood OR floodplain OR FEMA'],
+ ['boundaries','Boundaries','boundary OR boundaries OR "city limits" OR district OR districts'],
+ ['historic','Historic','historic OR historical'],
+ ['aerial','Aerial photos','aerial OR imagery OR orthophoto']
+];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _ta=document.createElement('textarea');const unent=s=>{_ta.innerHTML=String(s||'').replace(/</g,'&lt;');return _ta.value};
+const strip=s=>unent(unent(String(s||'').replace(/<[^>]*>/g,' '))).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+const day=t=>t?new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'unknown date';
+const https=u=>String(u||'').replace(/^http:\/\//i,'https://').replace(/\/+$/,'');
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
+async function getJSON(url,ms){
+  const c=new AbortController();const to=setTimeout(()=>c.abort(),ms||25000);
+  try{const r=await fetch(url,{signal:c.signal});if(!r.ok)throw new Error('The service answered with error '+r.status);
+    const j=await r.json();if(j&&j.error)throw new Error(j.error.message||'The service refused');return j}
+  catch(e){if(e.name==='AbortError')throw new Error('The service took too long to answer');throw e}
+  finally{clearTimeout(to)}
+}
+
+/* ---------- saved work (this browser only) ---------- */
+const KEY='maproom.v1';
+let S={watch:{},pins:[],edits:{},last:null};
+try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&typeof j==='object')S=Object.assign(S,j)}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- state ---------- */
+let place=null;          // {name, base, state, stName, kind, bbox:[w,s,e,n], county}
+let topic='all', tab='live', sortNew=false;
+let countyRing=null, outline=null;
+const shown={};          // layers on the map by key
+const cache={live:null,tables:null,old:null};
+
+/* ---------- map ---------- */
+const map=L.map('map',{zoomControl:true}).setView([37.2,-119.4],6);
+const street=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+const photo=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagery &copy; Esri'});
+L.control.layers({'Street map':street,'Aerial photo':photo},null,{position:'topright'}).addTo(map);
+const pinLayer=L.layerGroup().addTo(map);
+let addingPin=false;
+map.on('click',e=>{ if(!addingPin)return; addingPin=false; map.getContainer().style.cursor='';
+  const p={id:'p'+Date.now(),lat:+e.latlng.lat.toFixed(6),lng:+e.latlng.lng.toFixed(6),text:'',place:place?place.name+', '+place.stName:''};
+  S.pins.push(p);save();drawPins();openPin(p.id);if(tab==='work')render(); });
+const pinMarkers={};
+function drawPins(){pinLayer.clearLayers();for(const p of S.pins){
+  const m=L.marker([p.lat,p.lng]).addTo(pinLayer);pinMarkers[p.id]=m;
+  m.bindPopup(()=>{const d=document.createElement('div');
+    d.innerHTML='<b>My pin</b><br><textarea rows="3" style="width:220px" placeholder="Write a note">'+esc(p.text)+'</textarea><div style="margin-top:6px;display:flex;gap:6px"><button data-a="s">Save</button><button data-a="d">Delete</button></div>';
+    d.querySelector('[data-a=s]').onclick=()=>{p.text=d.querySelector('textarea').value;save();m.closePopup();toast('Pin saved');if(tab==='work')render()};
+    d.querySelector('[data-a=d]').onclick=()=>{S.pins=S.pins.filter(x=>x.id!==p.id);save();drawPins();if(tab==='work')render()};
+    return d});
+}}
+function openPin(id){const m=pinMarkers[id];if(m){map.panTo(m.getLatLng());m.openPopup()}}
+drawPins();
+
+/* ---------- place pickers ---------- */
+const selState=$('#selState'),selCounty=$('#selCounty'),selCity=$('#selCity');
+selState.innerHTML='<option value="">Pick a state</option>'+Object.entries(STATES).sort((a,b)=>a[1].localeCompare(b[1])).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+let counties=[],cities=[];
+function ringsBox(rings){let w=180,s=90,e=-180,n=-90;for(const r of rings)for(const [x,y] of r){if(x<w)w=x;if(x>e)e=x;if(y<s)s=y;if(y>n)n=y}return [w,s,e,n]}
+function inRings(x,y,rings){let inside=false;for(const r of rings){for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside}}return inside}
+function showOutline(rings){if(outline)map.removeLayer(outline);
+  outline=L.polygon(rings.map(r=>r.map(([x,y])=>[y,x])),{color:'#b7791f',weight:2,fill:false,interactive:false}).addTo(map);
+  const b=ringsBox(rings);map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[10,10]});return b}
+async function loadCounties(st,then){
+  selCounty.disabled=true;selCounty.innerHTML='<option>Loading counties...</option>';selCity.disabled=true;selCity.innerHTML='<option value="">Whole county</option>';
+  try{const j=await getJSON(`${TIGER}/82/query?where=${encodeURIComponent("STATE='"+st+"'")}&outFields=NAME,BASENAME,GEOID&returnGeometry=false&orderByFields=BASENAME&f=json`);
+    counties=j.features.map(f=>f.attributes);
+    selCounty.innerHTML='<option value="">Pick a county</option>'+counties.map(c=>`<option value="${esc(c.GEOID)}">${esc(c.NAME)}</option>`).join('');
+    selCounty.disabled=false;if(then)then()}
+  catch(e){selCounty.innerHTML='<option value="">Could not load counties. Pick the state again.</option>';toast(e.message)}
+}
+async function loadCounty(geoid,then){
+  const c=counties.find(x=>x.GEOID===geoid);if(!c)return;
+  selCity.disabled=true;selCity.innerHTML='<option>Loading cities...</option>';
+  try{
+    const g=await getJSON(`${TIGER}/82/query?where=${encodeURIComponent("GEOID='"+geoid+"'")}&outFields=GEOID&returnGeometry=true&outSR=4326&maxAllowableOffset=0.003&geometryPrecision=4&f=json`);
+    countyRing=g.features[0].geometry.rings;const b=showOutline(countyRing);
+    const st=geoid.slice(0,2);
+    place={name:c.NAME,base:c.BASENAME,state:st,stName:STATES[st],kind:'county',bbox:b,county:c.NAME,geoid};
+    const env=encodeURIComponent(b.join(','));
+    const q=id=>getJSON(`${TIGER}/${id}/query?where=${encodeURIComponent("STATE='"+st+"'")}&geometry=${env}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,BASENAME,GEOID,CENTLAT,CENTLON&returnGeometry=false&f=json`).then(j=>j.features.map(f=>Object.assign(f.attributes,{layer:id}))).catch(()=>[]);
+    const [inc,cdp]=await Promise.all([q(28),q(30)]);
+    cities=inc.concat(cdp).filter(p=>inRings(+p.CENTLON,+p.CENTLAT,countyRing)).sort((a,b)=>a.BASENAME.localeCompare(b.BASENAME));
+    selCity.innerHTML='<option value="">Whole county</option>'+cities.map(p=>`<option value="${esc(p.GEOID)}">${esc(p.BASENAME)}${p.layer===30?' (unincorporated)':''}</option>`).join('');
+    selCity.disabled=false;
+    if(then)then();else placeChanged();
+  }catch(e){selCity.innerHTML='<option value="">Whole county</option>';toast(e.message)}
+}
+async function loadCity(geoid){
+  const p=cities.find(x=>x.GEOID===geoid);
+  if(!p){const c=counties.find(x=>x.GEOID===selCounty.value);if(c&&countyRing){const b=showOutline(countyRing);place={name:c.NAME,base:c.BASENAME,state:place.state,stName:place.stName,kind:'county',bbox:b,county:c.NAME,geoid:c.GEOID};placeChanged()}return}
+  try{const g=await getJSON(`${TIGER}/${p.layer}/query?where=${encodeURIComponent("GEOID='"+geoid+"'")}&outFields=GEOID&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0005&geometryPrecision=5&f=json`);
+    const b=showOutline(g.features[0].geometry.rings);
+    place={name:p.BASENAME,base:p.BASENAME,state:place.state,stName:place.stName,kind:'city',bbox:b,county:place.county,geoid:selCounty.value,city:geoid};placeChanged()}
+  catch(e){toast(e.message)}
+}
+selState.onchange=()=>{if(selState.value)loadCounties(selState.value)};
+selCounty.onchange=()=>{if(selCounty.value)loadCounty(selCounty.value)};
+selCity.onchange=()=>loadCity(selCity.value);
+function placeChanged(){cache.live=cache.tables=cache.old=null;S.last={st:place.state,county:place.geoid,city:place.city||''};save();
+  if(tab==='watch'||tab==='work')tab='live';drawChrome();render()}
+
+/* ---------- chrome ---------- */
+function changedCount(){return Object.values(S.watch).filter(w=>w.changed).length}
+function drawChrome(){
+  $('#chips').innerHTML=place?TOPICS.map(t=>`<button data-t="${t[0]}" class="${t[0]===topic?'on':''}">${t[1]}</button>`).join(''):'';
+  const n=changedCount(),wn=Object.keys(S.watch).length;
+  const T=[['live','Live maps'],['tables','Data tables'],['old','Old maps'],['offices','Offices'],['watch','Watching'+(wn?' '+wn:'')+(n?`<span class="badge">${n}</span>`:'')],['work','My work']];
+  $('#tabs').innerHTML=T.map(t=>`<button data-tab="${t[0]}" class="${t[0]===tab?'on':''}">${t[1]}</button>`).join('');
+}
+$('#chips').onclick=e=>{const b=e.target.closest('button');if(!b)return;topic=b.dataset.t;cache.live=cache.tables=null;drawChrome();render()};
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;tab=b.dataset.tab;drawChrome();render()};
+
+/* ---------- searches ---------- */
+function liveQuery(){
+  const t=TOPICS.find(x=>x[0]===topic)[2];
+  const names=place.kind==='county'?`("${place.name}" OR "County of ${place.base}" OR "${place.base} Co")`:`("${place.base}")`;
+  return names+(t?` AND (${t})`:'')+' AND (type:"Feature Service" OR type:"Map Service" OR type:"Image Service" OR type:"Web Map") AND access:public';
+}
+async function searchLive(){
+  const u=`${AGOL}/search?q=${encodeURIComponent(liveQuery())}&bbox=${place.bbox.map(v=>v.toFixed(4)).join(',')}&num=60&f=json`+(sortNew?'&sortField=modified&sortOrder=desc':'');
+  const j=await getJSON(u);
+  return {total:j.total,items:j.results.map(r=>({kind:'arcgis',id:r.id,title:r.title,type:r.type,owner:r.owner,modified:r.modified,url:https(r.url),snippet:strip(r.snippet||r.description).slice(0,220),link:'https://www.arcgis.com/home/item.html?id='+r.id}))};
+}
+async function searchTables(){
+  const word=topic==='all'?'':' '+TOPICS.find(x=>x[0]===topic)[1].split(/[ ,]/)[0].toLowerCase();
+  const j=await getJSON(`https://api.us.socrata.com/api/catalog/v1?q=${encodeURIComponent(place.base+word)}&limit=60`);
+  const b=place.base.toLowerCase().replace(/[^a-z]/g,''), stn=place.stName.toLowerCase();
+  const items=(j.results||[]).filter(r=>{const dom=(r.metadata&&r.metadata.domain||'').toLowerCase();
+      const txt=((r.resource.name||'')+' '+(r.resource.description||'')+' '+(r.resource.attribution||'')).toLowerCase();
+      const nm=(r.resource.name||'').toLowerCase();return dom.replace(/[^a-z]/g,'').includes(b)||nm.includes(place.base.toLowerCase())||(txt.includes(place.name.toLowerCase())&&txt.includes(stn))})
+    .map(r=>({kind:'socrata',id:r.resource.id,title:r.resource.name,type:r.resource.type==='map'?'Map':'Table',owner:r.metadata.domain,modified:Date.parse(r.resource.updatedAt),snippet:strip(r.resource.description).slice(0,220),link:r.permalink||r.link,domain:r.metadata.domain}));
+  return {total:items.length,items};
+}
+async function searchOld(){
+  const j=await getJSON(`https://www.loc.gov/collections/sanborn-maps/?q=${encodeURIComponent(place.base+' '+place.stName)}&fo=json&c=40&at=results`);
+  const b=place.base.toLowerCase();
+  const items=(j.results||[]).filter(r=>(r.title||'').toLowerCase().includes(b)&&(r.title||'').toLowerCase().includes(place.stName.toLowerCase()))
+    .map(r=>({title:r.title,date:r.date,link:r.url,img:(r.image_url||[])[0],desc:strip((r.description||[])[0]).slice(0,160)}));
+  return {items};
+}
+
+/* ---------- render ---------- */
+function watchBtn(it){const on=!!S.watch[it.kind+':'+it.id];return `<button data-act="watch" data-id="${esc(it.id)}" class="${on?'on':''}">${on?'Watching':'Watch'}</button>`}
+function liveCard(it){
+  const canView=it.url||it.type==='Web Map';
+  return `<div class="card" data-card="${esc(it.id)}"><h3>${esc(it.title)}</h3>
+  <div class="meta"><span class="pill">${esc(it.type)}</span>Kept by ${esc(it.owner)} · changed ${day(it.modified)}</div>
+  ${it.snippet?`<div class="meta">${esc(it.snippet)}</div>`:''}
+  <div class="row">${canView?`<button class="primary" data-act="view" data-id="${esc(it.id)}">Show on map</button><button data-act="explain" data-id="${esc(it.id)}">Explain</button>`:''}${watchBtn(it)}<a class="btn" target="_blank" rel="noopener" href="${esc(it.link)}">Source</a></div>
+  <div data-detail="${esc(it.id)}"></div></div>`;
+}
+function tableCard(it){return `<div class="card"><h3>${esc(it.title)}</h3><div class="meta"><span class="pill">${esc(it.type)}</span>${esc(it.owner)} · changed ${day(it.modified)}</div>${it.snippet?`<div class="meta">${esc(it.snippet)}</div>`:''}<div class="row">${watchBtn(it)}<a class="btn" target="_blank" rel="noopener" href="${esc(it.link)}">Open the data</a></div></div>`}
+let items={};   // id -> item for the current lists
+async function render(){
+  const P=$('#panel');
+  if(tab==='watch')return renderWatch();
+  if(tab==='work')return renderWork();
+  if(!place){P.innerHTML='<p class="note">Pick a state and a county first.</p>';return}
+  const where=esc(place.name+', '+place.stName);
+  if(tab==='offices')return renderOffices();
+  const my=place.name+topic+tab+sortNew;
+  P.innerHTML=`<p class="note">Asking the public services about ${where}...</p>`;
+  try{
+    if(tab==='live'){
+      const r=cache.live||(cache.live=await searchLive());if(my!==place.name+topic+tab+sortNew)return;
+      items={};r.items.forEach(i=>items[i.id]=i);
+      const sw=S.watch['search:'+liveQuery()];
+      P.innerHTML=`<p class="note"><b>${r.total}</b> live map ${r.total===1?'layer':'layers'} for ${where}${r.total>r.items.length?' (first '+r.items.length+' shown, pick a topic to narrow)':''}.</p>
+        <div class="row"><button data-act="sort">${sortNew?'Sorted: newest change first':'Sorted: best match first'}</button><button data-act="watchsearch" class="${sw?'on':''}">${sw?'Watching for new layers':'Tell me when new layers appear'}</button></div>`
+        +(r.items.map(liveCard).join('')||'<p class="note">Nothing public under that name and topic. Try "Everything", the whole county, or the Offices tab.</p>');
+    }else if(tab==='tables'){
+      const r=cache.tables||(cache.tables=await searchTables());if(my!==place.name+topic+tab+sortNew)return;
+      items={};r.items.forEach(i=>items[i.id]=i);
+      P.innerHTML=`<p class="note"><b>${r.items.length}</b> open data ${r.items.length===1?'table':'tables'} that mention ${where}. These are lists such as permits, licenses and inspections published by the city, county or state.</p>`+(r.items.map(tableCard).join('')||'<p class="note">No open data tables found for this place and topic.</p>');
+    }else if(tab==='old'){
+      const r=cache.old||(cache.old=await searchOld());if(my!==place.name+topic+tab+sortNew)return;
+      P.innerHTML=`<p class="note"><b>${r.items.length}</b> historic fire insurance map ${r.items.length===1?'set':'sets'} at the Library of Congress for ${where}. These show every building, street by street, as it stood that year.</p>`
+        +(r.items.map(i=>`<div class="card">${i.img?`<img class="thumb" loading="lazy" alt="" src="${esc(https(i.img))}">`:''}<h3>${esc(i.title)}</h3><div class="meta">${esc(i.date||'')} ${esc(i.desc||'')}</div><div class="row"><a class="btn" target="_blank" rel="noopener" href="${esc(i.link)}">Open the sheets</a></div></div>`).join('')||'<p class="note">No scanned sets under that name. Pick a city instead of the whole county, or try the Offices tab.</p>');
+    }
+  }catch(e){P.innerHTML=`<p class="err">${esc(e.message)}.</p><div class="row"><button data-act="retry">Try again</button></div>`}
+}
+function renderOffices(){
+  const c=place.county+', '+place.stName, p=place.name+', '+place.stName;
+  const g=q=>'https://www.google.com/search?q='+encodeURIComponent(q);
+  const L1=[
+   ['Assessor parcel maps','The county assessor draws every lot. Look up a parcel number or address.',g(c+' assessor parcel maps')],
+   ['Recorded maps: tract, parcel, survey','The county recorder or surveyor keeps the official recorded maps.',g(c+' recorded maps tract maps record of survey')],
+   ['Building plans and permit records','Blueprints for a building sit with the building department. Most places ask for a records request, and the owner or architect may need to sign off.',g(p+' building department plans permit records request')],
+   ['Street, sewer and storm as-builts','Public works keeps the as-built drawings for streets and pipes.',g(p+' public works as-built improvement plans')],
+   ['Its own map portal','Many cities and counties run their own map site.',g(p+' GIS maps open data portal')],
+  ];
+  const L2=[
+   ['FEMA flood maps','https://msc.fema.gov/portal/search?AddressQuery='+encodeURIComponent(p)],
+   ['USGS topographic maps, 1880s to now','https://ngmdb.usgs.gov/topoview/viewer/'],
+   ['Federal land patents and survey plats','https://glorecords.blm.gov/search/default.aspx'],
+   ['David Rumsey historic maps','https://www.davidrumsey.com/luna/servlet/view/search?q='+encodeURIComponent(place.base+' '+place.stName)],
+   ['ArcGIS Hub','https://hub.arcgis.com/search?q='+encodeURIComponent(place.name)],
+   ['Data.gov','https://catalog.data.gov/dataset?q='+encodeURIComponent(p)],
+  ];
+  $('#panel').innerHTML=`<p class="note">Some records are not in any live service. These go straight to the office that holds them for ${esc(p)}. The first five open a web search aimed at that office.</p>`
+   +L1.map(l=>`<div class="card"><h3>${esc(l[0])}</h3><div class="meta">${esc(l[1])}</div><div class="row"><a class="btn" target="_blank" rel="noopener" href="${esc(l[2])}">Find it</a></div></div>`).join('')
+   +'<div class="card"><h3>National archives that cover this place</h3><div class="row">'+L2.map(l=>`<a class="btn" target="_blank" rel="noopener" href="${esc(l[1])}">${esc(l[0])}</a>`).join('')+'</div></div>';
+}
+
+/* ---------- view a layer ---------- */
+async function serviceLayers(it){
+  if(it.type==='Web Map'){
+    const d=await getJSON(`${AGOL}/content/items/${it.id}/data?f=json`);
+    return (d.operationalLayers||[]).filter(l=>l.url).map(l=>({name:l.title||'Layer',url:https(l.url)}));
+  }
+  const u=it.url;
+  if(/\/\d+$/.test(u))return [{name:it.title,url:u}];
+  if(/ImageServer$/i.test(u))return [{name:it.title,url:u}];
+  const j=await getJSON(u+'?f=json');
+  const ls=(j.layers||[]).filter(l=>!l.subLayerIds);
+  return ls.map(l=>({name:l.name,url:u+'/'+l.id}));
+}
+function fmt(v,f){if(v==null||v==='')return '';if(f&&f.type==='esriFieldTypeDate'&&typeof v==='number')return new Date(v).toLocaleDateString();return String(v)}
+function featurePopup(layerUrl,props,fields,oidField){
+  const oid=props[oidField];const k=layerUrl+'#'+oid;const mine=S.edits[k]||{};
+  const d=document.createElement('div');
+  const rows=Object.keys(props).filter(n=>n!==oidField&&!/^shape|^globalid$/i.test(n)).map(n=>{const f=fields[n];const has=n in mine;
+    return `<tr><td>${esc(f&&f.alias||n)}</td><td class="v${has?' mine':''}" contenteditable data-f="${esc(n)}" data-o="${esc(fmt(props[n],f))}">${esc(has?mine[n]:fmt(props[n],f))}</td></tr>`}).join('');
+  d.innerHTML=`<table class="attr">${rows}</table><div style="font-size:12px;margin-top:4px;color:#5d6577">Tap a value to write your own correction. It is saved as yours and never sent to the owner.</div>`;
+  d.addEventListener('focusout',e=>{const td=e.target.closest('td.v');if(!td)return;const f=td.dataset.f,val=td.textContent.trim();
+    const m=S.edits[k]||(S.edits[k]={_layer:layerUrl,_id:oid});
+    if(val===td.dataset.o){delete m[f];td.classList.remove('mine')}else{m[f]=val;td.classList.add('mine')}
+    if(Object.keys(m).filter(x=>x[0]!=='_').length===0)delete S.edits[k];save()});
+  return d;
+}
+async function showLayer(l,box){
+  const key=l.url;
+  if(shown[key]){map.removeLayer(shown[key]);delete shown[key];return false}
+  let layer;
+  if(/ImageServer$/i.test(l.url)){layer=L.esri.imageMapLayer({url:l.url,opacity:.8})}
+  else{
+    const info=await getJSON(l.url+'?f=json');
+    if(info.type==='Raster Layer'||info.type==='Group Layer'||/MapServer\/\d+$/i.test(l.url)&&!(info.capabilities||'').includes('Query')){
+      const base=l.url.replace(/\/\d+$/,''),id=+l.url.match(/\/(\d+)$/)[1];
+      layer=L.esri.dynamicMapLayer({url:base,layers:[id],opacity:.8});
+    }else{
+      const fields={};(info.fields||[]).forEach(f=>fields[f.name]=f);
+      const oidField=info.objectIdField||((info.fields||[]).find(f=>f.type==='esriFieldTypeOID')||{}).name||'OBJECTID';
+      let count=null;try{count=(await getJSON(l.url+'/query?where=1%3D1&returnCountOnly=true&f=json')).count}catch(e){}
+      const big=count==null||count>4000;
+      const color=['#1d4ed8','#b42318','#17603a','#7c3aed','#b7791f','#0e7490'][Object.keys(shown).length%6];
+      const opt={url:l.url,minZoom:big?13:0,precision:5,style:()=>({color,weight:2,fillOpacity:.12})};
+      if(/Point/i.test(info.geometryType||''))opt.pointToLayer=(g,ll)=>L.circleMarker(ll,{radius:6,color,weight:2,fillOpacity:.5});
+      layer=L.esri.featureLayer(opt);
+      layer.bindPopup(e=>featurePopup(l.url,e.feature.properties,fields,oidField),{maxWidth:300});
+      layer.on('requesterror',()=>{if(box)box.innerHTML='<span class="err">The owner\'s server would not hand over the shapes. Use Source to open it on their site.</span>'});
+      if(big&&box){box.innerHTML=`<span class="ok">On the map.</span> ${count?count.toLocaleString()+' shapes. ':''}Zoom in close to see them.`;if(map.getZoom()<13&&place){const c=[(place.bbox[1]+place.bbox[3])/2,(place.bbox[0]+place.bbox[2])/2];map.setView(c,13)}}
+      else if(box){box.innerHTML=`<span class="ok">On the map.</span> ${count.toLocaleString()} shapes. Tap one to read it.`}
+      if(!big&&info.extent&&info.extent.spatialReference&&[4326,102100,3857].includes(info.extent.spatialReference.latestWkid||info.extent.spatialReference.wkid)){/* keep current view */}
+    }
+  }
+  layer.addTo(map);shown[key]=layer;return true;
+}
+async function explain(l){
+  const info=await getJSON(l.url+'?f=json');
+  let count=null;try{count=(await getJSON(l.url+'/query?where=1%3D1&returnCountOnly=true&f=json')).count}catch(e){}
+  const shape={esriGeometryPolygon:'areas',esriGeometryPolyline:'lines',esriGeometryPoint:'points',esriGeometryMultipoint:'points'}[info.geometryType]||'pictures';
+  const ed=info.editingInfo&&(info.editingInfo.dataLastEditDate||info.editingInfo.lastEditDate);
+  const fs=(info.fields||[]).filter(f=>!/^(objectid|fid|shape|globalid)|shape_|_?(length|area)$/i.test(f.name)).map(f=>f.alias||f.name);
+  return `<b>${esc(info.name||l.name)}</b> is a layer of ${count!=null?'<b>'+count.toLocaleString()+'</b> ':''}${shape}.`
+    +(fs.length?` Each one records: ${esc(fs.slice(0,18).join(', '))}${fs.length>18?' and '+(fs.length-18)+' more':''}.`:'')
+    +(ed?` The data was last edited on <b>${day(ed)}</b>.`:'')
+    +(strip(info.description)?` The owner says: "${esc(strip(info.description).slice(0,300))}"`:'')
+    +(info.copyrightText?` Credit: ${esc(info.copyrightText)}.`:'');
+}
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:type||'application/json'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+async function downloadView(l){
+  const b=map.getBounds();const env=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].map(v=>v.toFixed(5)).join(',');
+  const r=await fetch(`${l.url}/query?where=1%3D1&outFields=*&geometry=${env}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outSR=4326&resultRecordCount=2000&f=geojson`);
+  const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){throw new Error('The owner does not allow downloads from this layer')}
+  if(j.error)throw new Error(j.error.message||'The owner does not allow downloads from this layer');
+  download((l.name||'layer').replace(/[^\w]+/g,'-')+'.geojson',t,'application/geo+json');
+  toast((j.features||[]).length+' shapes saved to a file');
+}
+const layerCache={};
+async function openDetail(it,mode){
+  const box=document.querySelector(`[data-detail="${CSS.escape(it.id)}"]`);if(!box)return;
+  box.innerHTML='<p class="note">Reading the service...</p>';
+  try{
+    const ls=layerCache[it.id]||(layerCache[it.id]=await serviceLayers(it));
+    if(!ls.length){box.innerHTML='<p class="note">This one has no layers that can be drawn here. Use Source to open it on the owner\'s site.</p>';return}
+    box.innerHTML=ls.slice(0,40).map((l,i)=>`<div class="card" style="margin:6px 0"><div><b>${esc(l.name)}</b></div><div class="row"><button data-lact="show" data-i="${i}" class="${shown[l.url]?'on':''}">${shown[l.url]?'Hide':'Show'}</button><button data-lact="explain" data-i="${i}">Explain</button><button data-lact="dl" data-i="${i}">Download what is on screen</button></div><div class="meta" data-lmsg="${i}"></div></div>`).join('')+(ls.length>40?`<p class="note">${ls.length-40} more layers. Use Source to see them all.</p>`:'');
+    box.onclick=async e=>{const b=e.target.closest('button[data-lact]');if(!b)return;const l=ls[+b.dataset.i],msg=box.querySelector(`[data-lmsg="${b.dataset.i}"]`);
+      b.disabled=true;
+      try{
+        if(b.dataset.lact==='show'){const on=await showLayer(l,msg);b.textContent=on?'Hide':'Show';b.classList.toggle('on',on);if(!on)msg.textContent='';else if(!msg.innerHTML)msg.innerHTML='<span class="ok">On the map.</span>'}
+        if(b.dataset.lact==='explain'){msg.innerHTML='Reading...';msg.innerHTML='<div class="explain">'+await explain(l)+'</div>'}
+        if(b.dataset.lact==='dl'){await downloadView(l)}
+      }catch(err){msg.innerHTML='<span class="err">'+esc(/private|token|not allowed|403|499/i.test(err.message)?'The owner keeps this one private':err.message)+'.</span>'}
+      b.disabled=false};
+    const first=box.querySelector(`button[data-lact="${mode==='explain'?'explain':'show'}"]`);
+    if(first&&(ls.length===1||mode==='explain'))first.click();
+    if(ls.length===1||mode!=='explain')document.getElementById('map').scrollIntoView&&0;
+  }catch(e){box.innerHTML='<p class="err">'+esc(/token|499|403/i.test(e.message)?'The owner keeps this one private':e.message)+'.</p>'}
+}
+
+/* ---------- watching ---------- */
+async function latestOf(w){
+  if(w.kind==='arcgis'){
+    let t=0;const it=await getJSON(`${AGOL}/content/items/${w.id}?f=json`);t=it.modified||0;
+    if(w.url&&!/ImageServer$/i.test(w.url)){try{const u=/\/\d+$/.test(w.url)?w.url:w.url+'/0';const j=await getJSON(u+'?f=json',12000);const e=j.editingInfo&&(j.editingInfo.dataLastEditDate||j.editingInfo.lastEditDate);if(e>t)t=e}catch(e){}}
+    return {t};
+  }
+  if(w.kind==='socrata'){const j=await getJSON('https://api.us.socrata.com/api/catalog/v1?ids='+encodeURIComponent(w.id));const r=(j.results||[])[0];return {t:r?Date.parse(r.resource.updatedAt):0}}
+  if(w.kind==='search'){const j=await getJSON(`${AGOL}/search?q=${encodeURIComponent(w.q)}&bbox=${w.bbox}&num=100&sortField=modified&sortOrder=desc&f=json`);return {ids:j.results.map(r=>r.id),titles:Object.fromEntries(j.results.map(r=>[r.id,r.title]))}}
+}
+async function checkOne(k){
+  const w=S.watch[k];if(!w)return;
+  try{const r=await latestOf(w);w.err='';w.checked=Date.now();
+    if(w.kind==='search'){const fresh=r.ids.filter(i=>!w.ids.includes(i));w.fresh=fresh.map(i=>r.titles[i]);w.freshIds=fresh;w.changed=fresh.length>0}
+    else{w.latest=r.t;if(w.seen==null)w.seen=r.t;w.changed=r.t>w.seen}
+  }catch(e){w.err=e.message}
+}
+let checking=false;
+async function checkAll(quiet){
+  if(checking)return;checking=true;const ks=Object.keys(S.watch);
+  for(let i=0;i<ks.length;i+=4)await Promise.all(ks.slice(i,i+4).map(checkOne));
+  checking=false;save();drawChrome();if(tab==='watch')renderWatch();
+  if(!quiet)toast(changedCount()?changedCount()+' changed since you last looked':'Nothing has changed');
+}
+function toggleWatch(it){
+  const k=it.kind+':'+it.id;
+  if(S.watch[k]){delete S.watch[k];save();drawChrome();return false}
+  S.watch[k]={kind:it.kind,id:it.id,title:it.title,url:it.url||'',link:it.link,place:place?place.name+', '+place.stName:'',seen:null,latest:it.modified||null,added:Date.now()};
+  save();drawChrome();checkOne(k).then(()=>{save();drawChrome()});return true;
+}
+function renderWatch(){
+  const ks=Object.keys(S.watch);const P=$('#panel');
+  if(!ks.length){P.innerHTML='<p class="note">Nothing on your watch list yet. Press Watch on any map layer or data table and Map Room checks it for changes every time you open this page, and every half hour while it stays open.</p>';return}
+  ks.sort((a,b)=>(S.watch[b].changed?1:0)-(S.watch[a].changed?1:0)||(S.watch[b].latest||0)-(S.watch[a].latest||0));
+  P.innerHTML=`<div class="row"><button class="primary" data-act="checknow">Check all now</button><button data-act="seenall">Mark all as seen</button></div>`+ks.map(k=>{const w=S.watch[k];
+    const body=w.kind==='search'
+      ?`<div class="meta">New layers for ${esc(w.place)} (${esc(w.topic)})</div>${w.changed?`<div class="meta"><b>${w.fresh.length} new:</b> ${esc(w.fresh.slice(0,6).join('; '))}</div>`:'<div class="meta">No new layers since you last looked.</div>'}`
+      :`<div class="meta">${esc(w.place)} · ${w.changed?`<b>Changed ${day(w.latest)}</b> (you last saw ${day(w.seen)})`:`No change since ${day(w.latest||w.seen)}`}</div>`;
+    return `<div class="card ${w.changed?'changed':''}"><h3>${esc(w.title)}</h3>${body}${w.err?`<div class="meta err">Could not check: ${esc(w.err)}</div>`:''}<div class="meta">Last checked ${w.checked?new Date(w.checked).toLocaleString():'not yet'}</div>
+    <div class="row">${w.changed?`<button data-act="seen" data-k="${esc(k)}">Mark as seen</button>`:''}${w.link?`<a class="btn" target="_blank" rel="noopener" href="${esc(w.link)}">Source</a>`:''}<button data-act="unwatch" data-k="${esc(k)}">Stop watching</button></div></div>`}).join('');
+}
+
+/* ---------- my work ---------- */
+function renderWork(){
+  const ed=Object.entries(S.edits);
+  $('#panel').innerHTML=`<div class="row"><button class="primary" data-act="pin">Add a pin to the map</button><button data-act="export">Save my work to a file</button><button data-act="import">Open a saved file</button></div>
+  <p class="note">Pins, notes and your own corrections live in this browser. Save them to a file to keep a copy or hand them to someone else.</p>
+  <h3>My pins (${S.pins.length})</h3>`+(S.pins.map(p=>`<div class="card"><div>${esc(p.text||'No note yet')}</div><div class="meta">${esc(p.place)} · ${p.lat}, ${p.lng}</div><div class="row"><button data-act="gopin" data-id="${p.id}">Show</button><button data-act="delpin" data-id="${p.id}">Delete</button></div></div>`).join('')||'<p class="note">No pins yet.</p>')
+  +`<h3>My corrections (${ed.length})</h3>`+(ed.map(([k,m])=>`<div class="card"><div class="meta">${esc(m._layer.split('/').slice(-3).join('/'))}, record ${esc(m._id)}</div>${Object.keys(m).filter(x=>x[0]!=='_').map(f=>`<div><b>${esc(f)}:</b> ${esc(m[f])}</div>`).join('')}<div class="row"><button data-act="deledit" data-k="${esc(k)}">Remove</button></div></div>`).join('')||'<p class="note">None yet. Show a layer, tap a shape, and tap any value to write your own.</p>');
+}
+
+/* ---------- clicks in the panel ---------- */
+$('#panel').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,it=items[b.dataset.id];
+  if(a==='view'&&it)openDetail(it,'show');
+  if(a==='explain'&&it)openDetail(it,'explain');
+  if(a==='watch'&&it){const on=toggleWatch(it);b.textContent=on?'Watching':'Watch';b.classList.toggle('on',on);toast(on?'Watching. Changes show under the Watching tab.':'Stopped watching')}
+  if(a==='sort'){sortNew=!sortNew;cache.live=null;render()}
+  if(a==='retry')render();
+  if(a==='watchsearch'){const q=liveQuery(),k='search:'+q;
+    if(S.watch[k]){delete S.watch[k]}else{S.watch[k]={kind:'search',id:q,q,bbox:place.bbox.map(v=>v.toFixed(4)).join(','),title:'New layers: '+place.name+', '+place.stName,place:place.name+', '+place.stName,topic:TOPICS.find(x=>x[0]===topic)[1],ids:[],added:Date.now()};
+      try{const r=await latestOf(S.watch[k]);S.watch[k].ids=r.ids;S.watch[k].checked=Date.now()}catch(err){}}
+    save();drawChrome();render()}
+  if(a==='checknow'){b.textContent='Checking...';checkAll()}
+  if(a==='seen'||a==='seenall'){for(const k of (a==='seen'?[b.dataset.k]:Object.keys(S.watch))){const w=S.watch[k];if(!w)continue;if(w.kind==='search'){w.ids=w.ids.concat(w.freshIds||[]);w.fresh=[];w.freshIds=[]}else w.seen=w.latest;w.changed=false}save();drawChrome();renderWatch()}
+  if(a==='unwatch'){delete S.watch[b.dataset.k];save();drawChrome();renderWatch()}
+  if(a==='pin'){addingPin=true;map.getContainer().style.cursor='crosshair';toast('Now tap the map where the pin goes');document.getElementById('map').scrollIntoView({behavior:'smooth'})}
+  if(a==='gopin'){document.getElementById('map').scrollIntoView({behavior:'smooth'});map.setView(pinMarkers[b.dataset.id].getLatLng(),Math.max(map.getZoom(),15));openPin(b.dataset.id)}
+  if(a==='delpin'){S.pins=S.pins.filter(p=>p.id!==b.dataset.id);save();drawPins();renderWork()}
+  if(a==='deledit'){delete S.edits[b.dataset.k];save();renderWork()}
+  if(a==='export'){download('map-room-my-work.json',JSON.stringify({app:'Map Room',saved:new Date().toISOString(),watch:S.watch,pins:S.pins,edits:S.edits,pinsGeoJSON:{type:'FeatureCollection',features:S.pins.map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[p.lng,p.lat]},properties:{note:p.text,place:p.place}}))}},null,1))}
+  if(a==='import'){const f=document.createElement('input');f.type='file';f.accept='.json,application/json';f.onchange=async()=>{try{const j=JSON.parse(await f.files[0].text());
+      if(Array.isArray(j.pins)){const have=new Set(S.pins.map(p=>p.id));j.pins.forEach(p=>{if(p&&isFinite(p.lat)&&isFinite(p.lng)&&!have.has(p.id))S.pins.push({id:String(p.id||'p'+Math.random()),lat:+p.lat,lng:+p.lng,text:String(p.text||''),place:String(p.place||'')})})}
+      if(j.edits&&typeof j.edits==='object')Object.assign(S.edits,j.edits);
+      if(j.watch&&typeof j.watch==='object')for(const k in j.watch)if(!S.watch[k])S.watch[k]=j.watch[k];
+      save();drawPins();drawChrome();renderWork();toast('Saved file opened')}catch(err){toast('That file is not a Map Room file')}};f.click()}
+});
+
+/* ---------- start ---------- */
+drawChrome();
+(async()=>{
+  const L0=S.last;
+  if(L0&&STATES[L0.st]){selState.value=L0.st;
+    await loadCounties(L0.st,()=>{selCounty.value=L0.county;
+      if(selCounty.value)loadCounty(L0.county,()=>{if(L0.city&&cities.find(c=>c.GEOID===L0.city)){selCity.value=L0.city;loadCity(L0.city)}else placeChanged()})})}
+  if(Object.keys(S.watch).length)checkAll(true);
+  setInterval(()=>checkAll(true),30*60*1000);
+})();
+window.__maproom={S:()=>S,place:()=>place,shown,map};
+</script>
+</body>
+</html>
